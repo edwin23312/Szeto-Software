@@ -1,0 +1,223 @@
+<?php
+class User_model extends CI_Model {
+	var $is_count = false;
+	
+	function __construct(){
+        // Call the Model constructor
+        parent::__construct();
+    }
+    
+    /* countSearchUser */
+    function countSearch($searchval=array()){
+    	$this->is_count = true;
+		
+    	$res = $this->search(0,0,'','',$searchval);
+    	
+    	return $res[0]->total;
+	}
+    
+    function activate_member($id,$code){
+    	//check if valid activation code
+    	$searchval['id'] = $id;
+    	$searchval['activation_code'] = $code;
+		$result = $this->search(1,1,'decms_users.id','asc',$searchval);
+		
+		if(count($result)){
+			//-- activate if activation code is matched
+			$data = array(
+				"activated_on" 	=> date("Y-m-d H:i:s")
+				,"active"		=> 1
+			);
+			$this->update($data,$id);	
+			return "ok";
+		}else {
+			return "notok";
+		}
+    }
+    
+    function checkUserPassword($email,$password,$group_id){
+		$searchval['email'] = $email;
+		//$searchval['password'] = $password;
+		//$searchval['active'] = 1;  // check in controller saja
+		$searchval['group_id'] = $group_id;
+			
+		$result = $this->search(0,1,'','',$searchval);
+		return $result;
+	}
+	
+	function total_new_member(){
+		$this->is_count = true;
+		$searchval['active'] = 1;
+		$searchval['new_member'] = 1;
+		$result = $this->search(0,1,'','',$searchval);
+			
+		return $result[0]->total;
+	
+	}
+	
+	function email_exists($email,$id=0){
+		$searchval['email'] = $email;
+		$searchval['group_id'] = 4;    //member 
+		
+		if($id)
+		$searchval['exclude_id'] = $id;
+			
+		$result = $this->search(0,1,'decms_users.id','asc',$searchval);
+		
+		if(count($result) > 0)
+			return true;
+		else
+		 	return false;
+	}
+	
+	function get_total_member(){
+		$this->is_count = true;
+		$searchval['active'] = 1;
+		$result = $this->search(0,1,'','',$searchval);
+			
+		return $result[0]->total;
+	}
+	
+	function get_dashboard_user(){
+		$result = $this->search(4,1,'created_on','desc');
+		return $result;
+	}
+	
+	function get_user_data($id){
+		$searchval['id'] = $id;
+		$result = $this->search(1,1,'decms_users.id','asc',$searchval);
+		return $result[0];
+	}
+	
+	function register_member($data,$profiles_data){
+		$this->db->insert("users", $data); 
+		
+		$id = $this->db->insert_id();
+		
+		//-- update created by 
+		$data = array(
+			"created_by" 	=> $id,
+			"updated_by"	=> $id
+		);
+		$this->update($data,$id);	
+		
+		//-- register profile
+		$profiles_data['id_user'] = $id;
+		$this->register_profile($profiles_data);
+		
+		return $id;
+	}
+	
+	function register_profile($values){
+		$this->db->insert("profiles", $values); 
+		
+		$id = $this->db->insert_id();
+		
+		//-- update created by 
+		$data = array(
+			"created_by" => $values['id_user']
+			,"updated_by"=> $values['id_user']
+		);
+		$this->update_profile($data,$id);
+	}
+	
+    	/* delete user*/
+    function delete($data){
+       	//-- delete records    	
+    	$this->db->where('id', $data['id']);
+		$this->db->delete('users'); 
+    }
+    
+    /* insert_users */
+    function insert($values){
+		$this->db->insert("users", $values); 
+		return $this->db->insert_id();
+	}
+	
+	function update($data,$id){
+		$this->db->where('id', $id);
+		$this->db->update('users', $data); 
+	}
+	
+	function update_profile($data,$id){
+		$this->db->where('id', $id);
+		$this->db->update('profiles', $data); 
+	}
+	
+	function search($limit=0,$page=0,$sidx='',$sord='',$searchval=array()){
+    	
+    	if(isset($searchval['group_id'])){
+			if(is_array($searchval['group_id']))
+				$this->db->where_in("group_id",$searchval['group_id']);
+			else
+				$this->db->where("group_id",$searchval['group_id']);
+		}
+		
+		if(isset($searchval['activation_code']))
+			$this->db->where("activation_code",$searchval['activation_code']);
+		
+		if(isset($searchval['id']) && $searchval['id'])
+			$this->db->where("decms_users.id",$searchval['id']);
+		
+		if(isset($searchval['exclude_id']) && $searchval['exclude_id'])
+			$this->db->where("decms_users.id <> ",$searchval['exclude_id']);
+		
+		if(isset($searchval['email']) && $searchval['email'])
+			$this->db->where("email",$searchval['email']);
+
+    	if(isset($searchval['password']) && $searchval['password'])
+			$this->db->where("password",$searchval['password']);
+
+		if(isset($searchval['active']))
+			$this->db->where("active",$searchval['active']);
+
+		if(isset($searchval['new_member']))
+			$this->db->where("DATEDIFF(now(),decms_users.created_on) <=",30); // new member since last 30 days
+		
+		if($this->is_count){
+			$this->db->select("count(decms_users.id) as total");
+		}else{
+			$this->db->select("decms_users.*,decms_profiles.*, decms_users.id as user_id, decms_profiles.id as profile_id");
+            $this->db->select("DATE_FORMAT(decms_users.last_login,'%d/%m/%Y %H:%i:%s') as last_login_fmt",false);
+            $this->db->select("decms_groups.name as user_group_name");
+        }
+		
+		if(!$this->is_count){
+			if($limit&&$page) {
+				$offset = ($page-1)*$limit;
+				if(!$offset)
+					$offset = 0;
+				$this->db->limit($limit,$offset);
+			}
+	  			
+			if($sidx)
+				$this->db->order_by($sidx,$sord);
+		}
+		
+		$this->db->join('profiles',"decms_profiles.id_user = decms_users.id","left outer");
+		$this->db->join("groups","decms_groups.id = decms_users.group_id");
+        $this->db->from('users');
+		
+		$query = $this->db->get();
+		
+ 		return $query->result();
+    }
+    
+    function setActive($id,$data){
+		$data["updated_on"]	= date("Y-m-d H:i:s");
+		$data["updated_by"]	= _userid();
+	
+  		$this->db->where('id', $id);
+		$this->db->update('users', $data); 
+	}
+
+    function getUserGroup(){
+        $this->db->where("id >=",_groupid());
+		$this->db->order_by("id","asc");
+        $this->db->from('groups');
+		
+		$query = $this->db->get();
+        
+ 		return $query->result();
+    }
+}
