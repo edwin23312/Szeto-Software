@@ -1,0 +1,250 @@
+<?php if ( ! defined('BASEPATH')) exit('No direct script access allowed');
+
+class Admin extends MY_Controller {
+	
+	/**
+	 * Index Page for this controller.
+	 *
+	 * Maps to the following URL
+	 * 		http://example.com/index.php/welcome
+	 *	- or -  
+	 * 		http://example.com/index.php/welcome/index
+	 *	- or -
+	 * Since this controller is set as the default controller in 
+	 * config/routes.php, it's displayed at http://example.com/
+	 *
+	 * So any other public methods not prefixed with an underscore will
+	 * map to /index.php/welcome/<method_name>
+	 * @see http://codeigniter.com/user_guide/general/urls.html
+	 */
+	 
+	public function __construct()
+	{
+		parent::__construct();
+		$this->load->model('page_model');
+        $this->load->model('category/category_model');
+	}
+	
+    function index(){
+        $this->search();
+    }
+    
+	function search(){
+		
+		$this->viewparams['title_page']			= lang('llist_page');
+		$this->viewparams['ladd_button_title']	= lang('ladd_page');
+	
+		parent::viewpage("vpage_list");
+	}
+	
+    
+   	function loadDataGrid(){
+		if(!isLoggedIn()){
+			redirect('admin/user/logout');
+            exit;
+        }
+		$page = isset($_POST['page'])?$_POST['page']:1;
+       	$sidx = isset($_POST['sidx'])?$_POST['sidx']:'date_posted'; // get index row - i.e. user click to sort
+      	$sord = isset($_POST['sord'])?$_POST['sord']:'desc'; // get the direction
+   		$limit = isset($_POST['rows'])?$_POST['rows']: config_item('rowNum'); // get how many rows we want to have into the grid
+      	
+        $searchv = array();
+		$query = $this->page_model->search($limit,$page,$sidx,$sord,$searchv);
+        $this->firephp->log($this->db->last_query());
+      	$count = $this->page_model->countSearch($searchv);
+		
+		for($i=0;$i<count($query);$i++){
+			$query[$i]->edit = $query[$i]->delete = "";
+		}
+		
+		$columns = array("page_id","page_status","page_title","page_description","category_name","date_posted_fmt2","page_status",'edit','delete');
+		$this->DataJqGrid = array(
+        	"page"		=> $page,
+        	"sidx"		=> $sidx,
+        	"sord"		=> $sord,
+        	"query" 	=> $query,
+        	"limit"		=> $limit,
+			"count"		=> $count,
+			"column"	=> $columns,
+			"id"		=> "page_id"
+ 		);
+        
+        parent::loadDataJqGrid();
+		
+	}
+    
+    function setpublish($value,$id){
+   		if(!isLoggedIn()){
+			redirect('admin/user/logout');
+            exit;
+        }
+
+		$data['status']	= $value;
+		
+		$this->page_model->setPublish($id,$data);
+		
+		$message = ($value == 1)?lang('ldata_isset_publish'):lang('ldata_isset_unpublish');
+		
+		$result = array("message" => $message);
+  		echo json_encode($result);
+
+
+	}
+
+	function delete($id){
+   		if(!isLoggedIn()){
+			redirect('admin/user/logout');
+            exit;
+        }
+
+		$data['id'] 	= $id;
+		
+		//-- should check if this category is used in the other table
+		$this->page_model->delete($data);
+		
+		$message = lang('ldata_is_deleted');
+		
+		$result = array("message" => $message);
+  		echo json_encode($result);
+
+
+	}
+	
+	function edit($id){
+		if(!isLoggedIn()){
+			redirect('admin/user/logout');
+        }
+        $title_page = sprintf(lang('lstring_modify'),lang('lpage'));
+		
+		$data = $this->page_model->getDataById($id);
+		
+		if(!$data){
+			redirect('admin');
+		}
+		
+		$this->viewparams['title_page']	= $title_page;
+		$this->viewparams['data']	= $data[0];
+			
+		$this->form($id);	
+	}
+	
+	function add(){
+		if(!isLoggedIn()){
+			redirect('admin/user/logout');
+        }
+		$title_page = sprintf(lang('lstring_add'),lang('lpage'));
+		$this->viewparams['title_page']	= $title_page;
+		$this->form();	
+	}
+	
+	function form($id=0){
+		$title_page2 = lang('lpage');
+		
+        //get category page
+        $searchval = array(
+            "type"      => 1 // page
+            ,"status"    => 1 //active
+            ,"id_parent" => 0            
+        );
+        
+        $category_list = $this->category_model->search_category(0,10,'name',$sord='asc',$searchval);
+		$this->viewparams['category_list']	= $category_list;
+			
+		$this->viewparams['title_page2']	= $title_page2;
+		parent::viewpage("vpage_form");
+	}
+	
+	function doupdate(){
+   		if(!isLoggedIn()){
+			redirect('admin/user/logout');
+            exit;
+        }
+
+		$id 		        = $_POST['page_id'];
+        $id_category		= ($_POST['id_category'])?$_POST['id_category']:NULL;
+		$title              = trim($_POST['title']);
+		$description        = trim($_POST['description']);
+        $content            = trim($_POST['content']);
+		$meta_keyword         = trim($_POST['meta_keyword']);
+		$meta_description     = trim($_POST['meta_description']);
+		$date_posted 		= ($_POST['date_posted'])?$_POST['date_posted']:date("Y-m-d");
+
+		$addnew		= ($_POST['addnew'])?$_POST['addnew']:0;
+		$status 	= (isset($_POST['status']) && $_POST['status'] == 1 ) ? $_POST['status']:0;
+		
+		$message = array();
+		$redirect = "";
+		$is_error = false;
+		
+		//-- run form validation
+		//name is mandatory
+		$this->load->library('form_validation');
+		$this->form_validation->set_rules('title', 'lang:ltitle', 'required');
+		
+		$this->form_validation->set_error_delimiters('', '');
+		
+		if ($this->form_validation->run() == FALSE){
+			$is_error = true;
+			if(form_error('title'))
+				$message[] = form_error('title'); 
+			
+		} else {
+		
+			if(!$is_error){
+				$level = 0;
+				
+				$values = array(
+					"title"			=> $title
+					,"description"	=> $description
+                    ,"id_category"	=> $id_category
+                    ,"status"		=> $status
+                    ,"content"		=> $content
+                    ,"meta_keyword"		=> $meta_keyword
+                    ,"meta_description"		=> $meta_description
+                    ,"date_posted"  => $date_posted
+					,"updated_on" 	=> date("Y-m-d H:i:s")
+					,"updated_by"	=> _userid()
+				);
+				
+				
+				//add
+				if(!$id){
+					$values["created_on"]  = date("Y-m-d H:i:s");
+					$values["created_by"]	= _userid();
+					$values["slug"] = $this->page_model->generate_slug($title,0);
+					$id = $this->page_model->insert($values);
+					//$this->page_model->update($values,$id);
+					
+					$message[] = lang('ldata_success_inserted');
+				}else{
+				    $slug = $this->input->post('slug');
+				    if(!$slug)
+					   $values["slug"] = $this->page_model->generate_slug($title,$id);
+                    else
+                       $values["slug"] = $this->page_model->generate_slug($slug,$id);
+                        
+					$this->page_model->update($values,$id);
+					$message[] = lang('ldata_success_updated');
+				}
+				
+				if($addnew)
+					$redirect = base_url()."admin/page/add";
+				else
+					$redirect = base_url()."admin/page";
+			}
+		}
+	
+		$result = array(
+			"message"	=> implode("<br/>",$message)
+			,"error"	=> $is_error
+			,"redirect"	=> $redirect
+		);
+		
+		echo json_encode($result);
+	}
+    
+
+}
+
+/* End of file category.php */
+/* Location: ./apps/modules/category/controllers/category.php */

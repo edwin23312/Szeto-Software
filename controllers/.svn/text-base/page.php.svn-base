@@ -1,0 +1,51 @@
+<?php if ( ! defined('BASEPATH')) exit('No direct script access allowed');
+
+class Page extends MY_Controller {
+	
+	/**
+	 * Index Page for this controller.
+	 *
+	 * Maps to the following URL
+	 * 		http://example.com/index.php/welcome
+	 *	- or -  
+	 * 		http://example.com/index.php/welcome/index
+	 *	- or -
+	 * Since this controller is set as the default controller in 
+	 * config/routes.php, it's displayed at http://example.com/
+	 *
+	 * So any other public methods not prefixed with an underscore will
+	 * map to /index.php/welcome/<method_name>
+	 * @see http://codeigniter.com/user_guide/general/urls.html
+	 */
+	 
+	public function __construct()
+	{
+		parent::__construct();
+        $this->load->model('page_model');
+	}
+	
+	function show_404($page='',$log_error=true){
+		// By default we log this, but allow a dev to skip it
+		if ($log_error)
+		{
+			log_message('error', '404 Page Not Found --> '.$page);
+		}
+		parent::view("error_404");
+	}
+    
+    function detail($slug=''){
+         if(!$slug){
+            redirect();
+            exit;
+        }
+        $data = $this->page_model->get_data_by_slug($slug);
+        $this->viewparams['data']   = $data[0];
+        
+        $this->viewparams['website_title']   = $data[0]->page_title." - ".config_item('website_title');
+        
+       	parent::view("page");
+    }
+}
+
+/* End of file oage.php */
+/* Location: ./apps/modules/page/controllers/page.php */
