@@ -8,7 +8,7 @@ class Testing_model extends CI_Model {
     }
 	
  	
-	/* Change Comment */ 
+	/* Change Comment 2 */ 
 	function getInfo($email,$send_to){
 		$this->db->select("decms_testing.email as email_sender");
 		$this->db->select("decms_testing.send_to as kepada");
